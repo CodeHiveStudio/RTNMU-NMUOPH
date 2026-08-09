@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>เช็คการจองของฉัน</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<!-- QRCode.js — วาด QR ของหมายเลขการจอง ให้เจ้าหน้าที่หน้างานสแกนได้จากมือถือผู้เข้าร่วมโดยตรง -->
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+
+<style>
+  /* =========================================================
+     DESIGN TOKENS — "field board"
+     หน้านี้เป็นหน้าสาธารณะแยกจาก Admin Backoffice ตั้งใจให้รู้สึกเหมือน
+     "ป้ายบอร์ดหน้างาน" ของกิจกรรมฐาน — กระดาษสีเบจอุ่นๆ, ตัวเลขแบบ mono
+     เหมือนป้ายบอร์ดเวลาเที่ยวบิน, การ์ดผลค้นหาตัดขอบแบบ "ตั๋ว" ที่มีรอยปรุ
+     ========================================================= */
+  :root{
+    --bg:#F2EEE1;
+    --bg-soft:#EAE4D2;
+    --panel:#FBF9F2;
+    --line:#DCD3B9;
+    --line-strong:#C9BE9E;
+    --ink:#1B2A20;
+    --ink-soft:#5B6459;
+
+    --pine:#1F3D2C;         --pine-dim:#DEE7DF;   /* หัวข้อ/ปุ่มหลัก */
+    --amber:#C8801E;        --amber-dim:#F5E4C4;  /* ยังไม่เริ่ม */
+    --rust:#B84B2C;         --rust-dim:#F3DACB;   /* กำลังดำเนินอยู่ */
+    --slate:#6B7482;        --slate-dim:#E6E5DC;  /* สิ้นสุดแล้ว */
+    --good:#2F7D5A;         --good-dim:#DCEEE2;   /* ที่นั่งว่าง */
+    --danger:#B23A3A;       --danger-dim:#F4DEDA; /* เต็ม/ยกเลิก */
+
+    --radius-lg:22px;
+    --radius-md:14px;
+    --radius-sm:9px;
+    --shadow-sm:0 6px 16px rgba(27,42,32,.07);
+    --shadow-md:0 16px 34px rgba(27,42,32,.10);
+    --gutter:clamp(1rem, 1.4vw + .6rem, 2.5rem);
+  }
+
+  *{ box-sizing:border-box; font-family:'Noto Sans Thai',system-ui,-apple-system,sans-serif; }
+  .mono{ font-family:'IBM Plex Mono',monospace; letter-spacing:-.01em; }
+  html,body{ background:var(--bg); color:var(--ink); margin:0; }
+  body{
+    font-size:.94rem;
+    background-image:
+      radial-gradient(circle at 1px 1px, rgba(27,42,32,.05) 1px, transparent 0);
+    background-size:22px 22px;
+    -webkit-font-smoothing:antialiased;
+  }
+  @media (prefers-reduced-motion: reduce){ *{ animation:none !important; transition:none !important; } }
+
+  .wrap{ max-width:980px; margin:0 auto; padding:var(--gutter); }
+  .hidden{ display:none !important; }
+  .fade-in{ animation:fade-in .22s ease; }
+  @keyframes fade-in{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
+
+  a{ color:var(--pine); }
+  button{ font-family:inherit; cursor:pointer; }
+  button:focus-visible, input:focus-visible, [tabindex]:focus-visible{ outline:2px solid var(--pine); outline-offset:2px; }
+
+  /* ---------- hero ---------- */
+  .hero{ display:flex; align-items:flex-end; justify-content:space-between; gap:1.5rem; flex-wrap:wrap; margin-bottom:1.6rem; }
+  .eyebrow{ font-family:'IBM Plex Mono',monospace; font-size:.72rem; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-soft); margin:0 0 .5rem; }
+  h1{ font-size:clamp(1.6rem, 2.4vw + 1rem, 2.35rem); font-weight:800; letter-spacing:-.02em; margin:0 0 .4rem; }
+  .sub{ color:var(--ink-soft); margin:0; max-width:46ch; }
+
+  .clock{
+    font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:1.5rem;
+    background:var(--ink); color:var(--bg); border-radius:var(--radius-sm);
+    padding:.55rem .9rem; box-shadow:var(--shadow-sm); letter-spacing:.03em;
+    white-space:nowrap;
+  }
+  .clock .lbl{ display:block; font-size:.6rem; letter-spacing:.14em; text-transform:uppercase; opacity:.65; font-weight:500; }
+
+  /* ---------- setup / error banner ---------- */
+  .banner{
+    border:1.5px dashed var(--rust); background:var(--rust-dim); color:var(--ink);
+    border-radius:var(--radius-md); padding:1rem 1.15rem; margin-bottom:1.4rem; font-size:.87rem; line-height:1.55;
+  }
+  .banner b{ display:block; margin-bottom:.25rem; }
+  .banner code{ background:rgba(27,42,32,.08); padding:.1rem .4rem; border-radius:6px; }
+
+  /* ---------- panel shell ---------- */
+  .panel{ background:var(--panel); border:1px solid var(--line); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); padding:1.5rem; margin-bottom:1.75rem; }
+  .panel h2{ font-size:1.05rem; font-weight:800; margin:0 0 .15rem; letter-spacing:-.01em; }
+  .panel .panel-sub{ color:var(--ink-soft); font-size:.82rem; margin:0 0 1.1rem; }
+
+  /* ---------- search ---------- */
+  .search-row{ display:flex; gap:.6rem; flex-wrap:wrap; }
+  .search-row input{
+    flex:1 1 240px; background:#fff; border:1.5px solid var(--line-strong); color:var(--ink);
+    font-size:.92rem; padding:.75rem .95rem; border-radius:var(--radius-sm); font-weight:500;
+  }
+  .search-row input:focus{ outline:none; border-color:var(--pine); box-shadow:0 0 0 4px var(--pine-dim); }
+  .btn{ border:none; font-weight:800; color:#fff; background:var(--pine); border-radius:var(--radius-sm); padding:.75rem 1.3rem; font-size:.88rem; box-shadow:var(--shadow-sm); transition:transform .12s ease, box-shadow .12s ease; }
+  .btn:hover{ transform:translateY(-1px); box-shadow:var(--shadow-md); }
+  .btn:active{ transform:translateY(0); }
+  .btn:disabled{ opacity:.5; cursor:not-allowed; transform:none; }
+
+  .hint{ color:var(--ink-soft); font-size:.78rem; margin-top:.55rem; }
+
+  /* ---------- ticket stub (signature element) ---------- */
+  .tickets{ margin-top:1.2rem; display:flex; flex-direction:column; gap:1rem; }
+  .ticket{
+    position:relative; display:flex; background:#fff; border:1px solid var(--line-strong);
+    border-radius:var(--radius-md); overflow:hidden; box-shadow:var(--shadow-sm);
+  }
+  .ticket-main{ flex:1; padding:1.1rem 1.2rem; min-width:0; }
+  .ticket-name{ font-weight:800; font-size:1.02rem; margin:0 0 .15rem; }
+  .ticket-id{ font-size:.74rem; color:var(--ink-soft); margin:0 0 .7rem; }
+  .ticket-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(110px,1fr)); gap:.6rem 1rem; }
+  .ticket-field .lbl{ font-family:'IBM Plex Mono',monospace; font-size:.62rem; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-soft); display:block; margin-bottom:.15rem; }
+  .ticket-field .val{ font-weight:700; font-size:.9rem; }
+  .ticket-stub{
+    flex:0 0 128px; border-left:2px dashed var(--line-strong); background:var(--bg-soft);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:.45rem; padding:1rem .75rem;
+  }
+  .ticket-stub::before, .ticket-stub::after{
+    content:''; position:absolute; width:20px; height:20px; background:var(--bg); border-radius:50%;
+    left:calc(128px * -1 + 128px - 11px); /* aligned via right offset below instead */
+  }
+  .ticket{ position:relative; }
+  .ticket .notch-top, .ticket .notch-bot{
+    position:absolute; width:20px; height:20px; background:var(--bg); border-radius:50%; right:118px;
+  }
+  .notch-top{ top:-10px; } .notch-bot{ bottom:-10px; }
+  .qr-box{ background:#fff; padding:.35rem; border-radius:6px; border:1px solid var(--line); }
+  .qr-box img, .qr-box canvas{ display:block; width:74px; height:74px; }
+
+  .status-pill{
+    display:inline-flex; align-items:center; gap:.4rem; font-weight:700; font-size:.72rem;
+    padding:.3rem .65rem; border-radius:999px; letter-spacing:.01em; white-space:nowrap;
+  }
+  .status-pill .dot{ width:7px; height:7px; border-radius:50%; background:currentColor; }
+  .pill-confirmed{ background:var(--amber-dim); color:var(--amber); }
+  .pill-checkedin{ background:var(--good-dim); color:var(--good); }
+  .pill-cancelled{ background:var(--danger-dim); color:var(--danger); }
+
+  .empty-hint{ color:var(--ink-soft); font-size:.85rem; padding:1.4rem 1rem; text-align:center; border:1.5px dashed var(--line-strong); border-radius:var(--radius-md); }
+
+  /* ---------- board controls ---------- */
+  .board-head{ display:flex; align-items:center; justify-content:space-between; gap:.75rem; flex-wrap:wrap; margin-bottom:1rem; }
+  .chip-row{ display:flex; gap:.5rem; flex-wrap:wrap; }
+  .chip{
+    border:1.5px solid var(--line-strong); background:#fff; color:var(--ink-soft); font-weight:700; font-size:.76rem;
+    padding:.4rem .85rem; border-radius:999px; transition:background-color .12s ease, color .12s ease, border-color .12s ease;
+  }
+  .chip.active{ background:var(--pine); border-color:var(--pine); color:#fff; }
+
+  .refresh-row{ display:flex; align-items:center; gap:.6rem; font-size:.76rem; color:var(--ink-soft); }
+  .switch{ position:relative; width:36px; height:20px; }
+  .switch input{ opacity:0; width:100%; height:100%; margin:0; position:absolute; cursor:pointer; }
+  .switch .track{ position:absolute; inset:0; background:var(--line-strong); border-radius:999px; transition:background-color .15s ease; }
+  .switch .track::after{ content:''; position:absolute; width:16px; height:16px; left:2px; top:2px; background:#fff; border-radius:50%; transition:transform .15s ease; box-shadow:var(--shadow-sm); }
+  .switch input:checked + .track{ background:var(--pine); }
+  .switch input:checked + .track::after{ transform:translateX(16px); }
+
+  .base-tabs{ display:flex; gap:.4rem; overflow-x:auto; padding-bottom:.3rem; margin-bottom:1.1rem; }
+  .base-tab{
+    flex:0 0 auto; border:1.5px solid var(--line-strong); background:#fff; font-weight:700; font-size:.8rem;
+    padding:.5rem 1rem; border-radius:var(--radius-sm); color:var(--ink-soft); white-space:nowrap;
+  }
+  .base-tab.active{ background:var(--pine-dim); border-color:var(--pine); color:var(--pine); }
+
+  .summary-strip{ display:flex; gap:1.2rem; flex-wrap:wrap; margin-bottom:1.1rem; }
+  .summary-item{ font-size:.78rem; color:var(--ink-soft); }
+  .summary-item b{ font-family:'IBM Plex Mono',monospace; font-size:1rem; color:var(--ink); display:block; }
+
+  /* ---------- board rows ---------- */
+  .slot-row{
+    display:flex; align-items:center; gap:1rem; padding:.95rem 1.05rem; border:1px solid var(--line);
+    border-radius:var(--radius-md); background:#fff; margin-bottom:.65rem; flex-wrap:wrap;
+  }
+  .slot-time{
+    font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:1.05rem; flex:0 0 auto;
+    background:var(--ink); color:var(--bg); border-radius:var(--radius-sm); padding:.4rem .7rem; min-width:118px; text-align:center;
+  }
+  .slot-mid{ flex:1 1 180px; min-width:0; }
+  .slot-base{ font-weight:700; font-size:.88rem; margin:0 0 .15rem; }
+  .slot-loc{ font-size:.76rem; color:var(--ink-soft); margin:0; }
+
+  .status-tag{ display:inline-flex; align-items:center; gap:.4rem; font-weight:800; font-size:.72rem; padding:.32rem .7rem; border-radius:999px; flex:0 0 auto; }
+  .status-tag .dot{ width:7px; height:7px; border-radius:50%; background:currentColor; }
+  .tag-upcoming{ background:var(--amber-dim); color:var(--amber); }
+  .tag-live{ background:var(--rust-dim); color:var(--rust); }
+  .tag-live .dot{ animation:pulse-dot 1.4s ease-in-out infinite; }
+  @keyframes pulse-dot{ 0%,100%{ opacity:1; transform:scale(1);} 50%{ opacity:.35; transform:scale(.7);} }
+  .tag-ended{ background:var(--slate-dim); color:var(--slate); }
+
+  .seat-gauge{ flex:0 0 148px; }
+  .seat-nums{ display:flex; justify-content:space-between; font-family:'IBM Plex Mono',monospace; font-size:.72rem; font-weight:700; margin-bottom:.3rem; }
+  .seat-bar{ height:7px; background:var(--bg-soft); border-radius:999px; overflow:hidden; }
+  .seat-bar > span{ display:block; height:100%; background:var(--good); border-radius:999px; transition:width .2s ease; }
+  .seat-bar.full > span{ background:var(--danger); }
+
+  footer{ text-align:center; color:var(--ink-soft); font-size:.76rem; padding:1.5rem 0 2.5rem; }
+
+  @media (max-width:560px){
+    .ticket{ flex-direction:column; }
+    .ticket-stub{ flex-direction:row; border-left:none; border-top:2px dashed var(--line-strong); width:100%; }
+    .notch-top, .notch-bot{ display:none; }
+    .clock{ font-size:1.15rem; }
+    .slot-time{ min-width:96px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hero">
+    <div>
+      <p class="eyebrow">ระบบตรวจสอบสำหรับผู้เข้าร่วมงาน</p>
+      <h1>เช็คการจองของคุณ</h1>
+      <p class="sub">ค้นหาการจองด้วยหมายเลขการจองหรือเลขบัตรประชาชน และดูสถานะที่นั่งของแต่ละรอบแบบเรียลไทม์</p>
+    </div>
+    <div class="clock mono" id="clock">
+      <span class="lbl">เวลาปัจจุบัน</span>
+      <span id="clock-time">--:--:--</span>
+    </div>
+  </div>
+
+  <div id="config-banner" class="banner hidden">
+    <b>ยังไม่ได้ตั้งค่าปลายทางเซิร์ฟเวอร์</b>
+    เปิดไฟล์นี้ด้วยตัวแก้ไขข้อความ แล้วแก้ค่า <code>GAS_WEB_APP_URL</code> ในส่วน
+    <code>&lt;script&gt;</code> ท้ายไฟล์ ให้เป็น URL ของ Web App ที่ deploy จาก Apps Script
+    (Deploy → Manage deployments → คัดลอก URL ที่ลงท้ายด้วย <code>/exec</code>)
+    จากนั้นค่อยอัปโหลดขึ้น GitHub Pages
+  </div>
+
+  <!-- ================= ค้นหาการจองของฉัน ================= -->
+  <section class="panel">
+    <h2>ค้นหาการจองของฉัน</h2>
+    <p class="panel-sub">กรอกหมายเลขการจอง (เช่น BK-...) หรือเลขบัตรประชาชนที่ใช้ตอนจอง</p>
+    <form class="search-row" id="search-form">
+      <input type="text" id="search-term" placeholder="หมายเลขการจอง หรือ เลขบัตรประชาชน" autocomplete="off">
+      <button class="btn" type="submit" id="search-btn">ค้นหา</button>
+    </form>
+    <p class="hint" id="search-hint"></p>
+    <div class="tickets" id="search-results"></div>
+  </section>
+
+  <!-- ================= บอร์ดสถานะรอบเวลา ================= -->
+  <section class="panel">
+    <div class="board-head">
+      <div>
+        <h2>สถานะรอบเวลา &amp; ที่นั่งว่าง</h2>
+        <p class="panel-sub" style="margin-bottom:0;">อัปเดตล่าสุด: <span class="mono" id="last-updated">–</span></p>
+      </div>
+      <label class="refresh-row">
+        <span class="switch">
+          <input type="checkbox" id="auto-refresh-toggle" checked>
+          <span class="track"></span>
+        </span>
+        รีเฟรชอัตโนมัติทุก 20 วิ
+      </label>
+    </div>
+
+    <div class="base-tabs" id="base-tabs"></div>
+
+    <div class="chip-row" id="status-chips" style="margin-bottom:1.1rem;">
+      <button class="chip active" data-status="all">ทั้งหมด</button>
+      <button class="chip" data-status="upcoming">ยังไม่เริ่ม</button>
+      <button class="chip" data-status="live">กำลังดำเนินอยู่</button>
+      <button class="chip" data-status="ended">สิ้นสุดแล้ว</button>
+    </div>
+
+    <div class="summary-strip" id="summary-strip"></div>
+
+    <div id="board-list"></div>
+  </section>
+
+  <footer>
+    หน้านี้แสดงเฉพาะข้อมูลสาธารณะ (สถานะรอบ / จำนวนที่นั่งว่าง) และผลค้นหาการจองของคุณเองเท่านั้น
+  </footer>
+</div>
+
+<script>
+  // =========================================================
+  // ตั้งค่า: วาง URL ของ Apps Script Web App ที่ deploy แล้ว (ลงท้ายด้วย /exec)
+  // ใช้ URL เดียวกับที่ระบบ Admin ใช้ได้เลย เพราะหน้านี้เรียกผ่าน doPost
+  // ด้วย action สาธารณะเท่านั้น (getBases / getSlots / getSeats / findBookingsBySearch)
+  // ไม่ต้องแนบ token แอดมินใดๆ
+  // =========================================================
+  const GAS_WEB_APP_URL = 'PASTE_YOUR_DEPLOYED_WEB_APP_URL_HERE';
+
+  const AUTO_REFRESH_MS = 20000;
+  const isConfigured = GAS_WEB_APP_URL && !GAS_WEB_APP_URL.includes('PASTE_YOUR');
+
+  const state = {
+    bases: [],
+    slots: [],       // { slotId, baseId, baseName, startTime, endTime, maxSeats, available, booked }
+    selectedBase: 'all',
+    selectedStatus: 'all',
+    refreshTimer: null
+  };
+
+  function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  async function callApi(action, payload) {
+    if (!isConfigured) throw new Error('NOT_CONFIGURED');
+    const res = await fetch(GAS_WEB_APP_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // เลี่ยง CORS preflight ของ application/json บน Apps Script
+      body: JSON.stringify(Object.assign({ action }, payload || {}))
+    });
+    if (!res.ok) throw new Error('HTTP_' + res.status);
+    return res.json();
+  }
+
+  // ---------- นาฬิกา ----------
+  function tickClock() {
+    const now = new Date();
+    document.getElementById('clock-time').textContent = now.toLocaleTimeString('th-TH', { hour12:false });
+  }
+  setInterval(tickClock, 1000);
+  tickClock();
+
+  // ---------- แปลงเวลารอบ (HH:mm[:ss] หรือ timestamp เต็ม) ให้เป็น Date เทียบกับวันนี้ ----------
+  // หมายเหตุ: สมมติว่าแต่ละรอบอยู่ภายในวันเดียวกัน (event 1 วัน) โดยอ่านเฉพาะส่วนเวลา
+  // ถ้ากิจกรรมของคุณมีหลายวันและคอลัมน์ startTime/endTime เก็บวันที่เต็มด้วย ให้ปรับฟังก์ชันนี้
+  // ให้ parse วันที่จากค่าที่ได้จริงแทนการอิง "วันนี้" เสมอ
+  function parseSlotTime(raw) {
+    if (!raw) return null;
+    const s = String(raw).trim();
+    const full = s.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (full) {
+      return new Date(+full[1], +full[2]-1, +full[3], +full[4], +full[5], +(full[6]||0));
+    }
+    const timeOnly = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (timeOnly) {
+      const now = new Date();
+      return new Date(now.getFullYear(), now.getMonth(), now.getDate(), +timeOnly[1], +timeOnly[2], +(timeOnly[3]||0));
+    }
+    return null;
+  }
+
+  function computeStatus(slot) {
+    const start = parseSlotTime(slot.startTime);
+    const end = parseSlotTime(slot.endTime);
+    const now = new Date();
+    if (!start || !end) return 'unknown';
+    if (now < start) return 'upcoming';
+    if (now > end) return 'ended';
+    return 'live';
+  }
+
+  const STATUS_META = {
+    upcoming: { label: 'ยังไม่เริ่ม', cls: 'tag-upcoming' },
+    live:     { label: 'กำลังดำเนินอยู่', cls: 'tag-live' },
+    ended:    { label: 'สิ้นสุดแล้ว', cls: 'tag-ended' },
+    unknown:  { label: 'ไม่ทราบเวลา', cls: 'tag-ended' }
+  };
+
+  const BOOKING_STATUS_META = {
+    Confirmed: { label: 'ยืนยันแล้ว รอเช็คอิน', cls: 'pill-confirmed' },
+    CheckedIn: { label: 'เช็คอินแล้ว', cls: 'pill-checkedin' },
+    Cancelled: { label: 'ยกเลิกแล้ว', cls: 'pill-cancelled' }
+  };
+
+  // ---------- โหลดข้อมูลบอร์ด ----------
+  async function loadBoard() {
+    try {
+      const baseRes = await callApi('getBases');
+      if (!baseRes || !baseRes.success) throw new Error(baseRes && baseRes.message || 'โหลดฐานกิจกรรมไม่สำเร็จ');
+      state.bases = baseRes.bases;
+
+      renderBaseTabs();
+
+      const slotLists = await Promise.all(state.bases.map(b => callApi('getSlots', { baseId: b.baseId })));
+      let slots = [];
+      state.bases.forEach((b, i) => {
+        const r = slotLists[i];
+        if (r && r.success) {
+          r.slots.forEach(s => slots.push(Object.assign({}, s, { baseId: b.baseId, baseName: b.baseName, location: b.location })));
+        }
+      });
+
+      const seatLists = await Promise.all(slots.map(s => callApi('getSeats', { slotId: s.slotId })));
+      slots = slots.map((s, i) => {
+        const r = seatLists[i];
+        const maxSeats = (r && r.success) ? r.maxSeats : (s.maxSeats || 0);
+        const booked = (r && r.success) ? (r.bookedSeats || []).length : 0;
+        return Object.assign({}, s, { maxSeats: maxSeats, booked: booked, available: Math.max(0, maxSeats - booked) });
+      });
+
+      state.slots = slots;
+      document.getElementById('last-updated').textContent = new Date().toLocaleTimeString('th-TH', { hour12:false });
+      renderBoard();
+    } catch (err) {
+      document.getElementById('board-list').innerHTML =
+        `<div class="empty-hint">โหลดข้อมูลรอบเวลาไม่สำเร็จ: ${escapeHtml(err.message)}<br>กรุณาตรวจสอบการเชื่อมต่อ แล้วลองรีเฟรชอีกครั้ง</div>`;
+    }
+  }
+
+  function renderBaseTabs() {
+    const wrap = document.getElementById('base-tabs');
+    const tabs = [{ baseId: 'all', baseName: 'ทุกฐาน' }].concat(state.bases);
+    wrap.innerHTML = tabs.map(b =>
+      `<button class="base-tab ${state.selectedBase === b.baseId ? 'active' : ''}" data-base="${escapeHtml(b.baseId)}">${escapeHtml(b.baseName)}</button>`
+    ).join('');
+    wrap.querySelectorAll('.base-tab').forEach(btn => {
+      btn.addEventListener('click', () => { state.selectedBase = btn.dataset.base; renderBaseTabs(); renderBoard(); });
+    });
+  }
+
+  function renderBoard() {
+    let list = state.slots.slice();
+    if (state.selectedBase !== 'all') list = list.filter(s => s.baseId === state.selectedBase);
+
+    const withStatus = list.map(s => Object.assign({}, s, { computedStatus: computeStatus(s) }));
+    const filtered = state.selectedStatus === 'all' ? withStatus : withStatus.filter(s => s.computedStatus === state.selectedStatus);
+    filtered.sort((a, b) => {
+      const ta = parseSlotTime(a.startTime), tb = parseSlotTime(b.startTime);
+      if (!ta || !tb) return 0;
+      return ta - tb;
+    });
+
+    // แถบสรุปด้านบน
+    const totalAvail = withStatus.reduce((sum, s) => sum + s.available, 0);
+    const totalMax = withStatus.reduce((sum, s) => sum + s.maxSeats, 0);
+    const liveCount = withStatus.filter(s => s.computedStatus === 'live').length;
+    const upcomingCount = withStatus.filter(s => s.computedStatus === 'upcoming').length;
+    document.getElementById('summary-strip').innerHTML = `
+      <div class="summary-item">ที่นั่งว่างรวม<b class="mono">${totalAvail} / ${totalMax}</b></div>
+      <div class="summary-item">รอบที่กำลังดำเนินอยู่<b class="mono">${liveCount}</b></div>
+      <div class="summary-item">รอบที่ยังไม่เริ่ม<b class="mono">${upcomingCount}</b></div>
+    `;
+
+    const box = document.getElementById('board-list');
+    if (!filtered.length) {
+      box.innerHTML = '<div class="empty-hint">ไม่พบรอบเวลาที่ตรงกับตัวกรองนี้</div>';
+      return;
+    }
+
+    box.innerHTML = filtered.map(s => {
+      const meta = STATUS_META[s.computedStatus];
+      const pct = s.maxSeats > 0 ? Math.round((s.available / s.maxSeats) * 100) : 0;
+      const full = s.available <= 0;
+      return `
+        <div class="slot-row fade-in">
+          <div class="slot-time">${escapeHtml(s.startTime)}–${escapeHtml(s.endTime)}</div>
+          <div class="slot-mid">
+            <p class="slot-base">${escapeHtml(s.baseName)}</p>
+            <p class="slot-loc">${escapeHtml(s.location || '')}</p>
+          </div>
+          <span class="status-tag ${meta.cls}"><span class="dot"></span>${meta.label}</span>
+          <div class="seat-gauge">
+            <div class="seat-nums"><span>ว่าง ${s.available}</span><span>เต็ม ${s.maxSeats}</span></div>
+            <div class="seat-bar ${full ? 'full' : ''}"><span style="width:${pct}%"></span></div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  document.getElementById('status-chips').addEventListener('click', e => {
+    const btn = e.target.closest('.chip');
+    if (!btn) return;
+    state.selectedStatus = btn.dataset.status;
+    document.querySelectorAll('#status-chips .chip').forEach(c => c.classList.toggle('active', c === btn));
+    renderBoard();
+  });
+
+  document.getElementById('auto-refresh-toggle').addEventListener('change', e => {
+    if (e.target.checked) startAutoRefresh(); else stopAutoRefresh();
+  });
+  function startAutoRefresh() {
+    stopAutoRefresh();
+    state.refreshTimer = setInterval(() => { loadBoard(); }, AUTO_REFRESH_MS);
+  }
+  function stopAutoRefresh() {
+    if (state.refreshTimer) clearInterval(state.refreshTimer);
+    state.refreshTimer = null;
+  }
+
+  // ---------- ค้นหาการจองของฉัน ----------
+  document.getElementById('search-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const term = document.getElementById('search-term').value.trim();
+    const resultsBox = document.getElementById('search-results');
+    const hint = document.getElementById('search-hint');
+    const btn = document.getElementById('search-btn');
+    hint.textContent = '';
+    if (!term) { hint.textContent = 'กรุณากรอกหมายเลขการจองหรือเลขบัตรประชาชน'; return; }
+
+    btn.disabled = true;
+    resultsBox.innerHTML = '<div class="empty-hint">กำลังค้นหา...</div>';
+    try {
+      const res = await callApi('findBookingsBySearch', { term });
+      if (!res || !res.success) {
+        resultsBox.innerHTML = `<div class="empty-hint">${escapeHtml((res && res.message) || 'ไม่พบข้อมูลการจอง')}</div>`;
+        return;
+      }
+      resultsBox.innerHTML = res.bookings.map((b, idx) => {
+        const bmeta = BOOKING_STATUS_META[b.status] || { label: escapeHtml(b.status || ''), cls: 'pill-confirmed' };
+        const qrId = 'qr-' + idx + '-' + Date.now();
+        return `
+          <div class="ticket fade-in">
+            <span class="notch-top"></span><span class="notch-bot"></span>
+            <div class="ticket-main">
+              <p class="ticket-name">${escapeHtml(b.fullName)}</p>
+              <p class="ticket-id mono">${escapeHtml(b.bookingId)}</p>
+              <div class="ticket-grid">
+                <div class="ticket-field"><span class="lbl">ฐานกิจกรรม</span><span class="val">${escapeHtml(b.baseName)}</span></div>
+                <div class="ticket-field"><span class="lbl">รอบเวลา</span><span class="val">${escapeHtml(b.slotTime)}</span></div>
+                <div class="ticket-field"><span class="lbl">ที่นั่ง</span><span class="val">${escapeHtml(b.seatNo)}</span></div>
+                <div class="ticket-field"><span class="lbl">สถานะ</span><span class="status-pill ${bmeta.cls}"><span class="dot"></span>${bmeta.label}</span></div>
+              </div>
+            </div>
+            <div class="ticket-stub">
+              <div class="qr-box" id="${qrId}"></div>
+              <span class="ticket-id mono" style="margin:0;">แสดงจุดเช็คอิน</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      // สร้าง QR หลังแทรก DOM แล้ว (ต้องมี element อยู่จริงก่อนเรียก QRCode)
+      res.bookings.forEach((b, idx) => {
+        const qrId = 'qr-' + idx + '-' + Date.now();
+        // จับคู่ id ใหม่จาก DOM จริงแทน เพราะ Date.now() ด้านบนต่างกันคนละรอบ evaluation
+      });
+      resultsBox.querySelectorAll('.qr-box').forEach((el, idx) => {
+        try { new QRCode(el, { text: res.bookings[idx].bookingId, width: 74, height: 74, correctLevel: QRCode.CorrectLevel.M }); }
+        catch (e) { /* ไม่บล็อกการแสดงผลถ้า QR ล้มเหลว */ }
+      });
+    } catch (err) {
+      resultsBox.innerHTML = `<div class="empty-hint">เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ: ${escapeHtml(err.message)}</div>`;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // ---------- init ----------
+  if (!isConfigured) {
+    document.getElementById('config-banner').classList.remove('hidden');
+    document.getElementById('board-list').innerHTML = '<div class="empty-hint">ยังไม่ได้ตั้งค่า GAS_WEB_APP_URL</div>';
+  } else {
+    loadBoard();
+    startAutoRefresh();
+  }
+</script>
+</body>
+</html>
