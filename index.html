@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>เช็คการจองของฉัน</title>
-<link rel="icon" type="image/png" href="https://raw.githubusercontent.com/LogicsDevStudio/EBS-RTNMU/refs/heads/main/images/codeHive_Favicon.png">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -30,11 +29,12 @@
     --ink-soft:#5B6459;
 
     --pine:#1F3D2C;         --pine-dim:#DEE7DF;   /* หัวข้อ/ปุ่มหลัก */
-    --amber:#C8801E;        --amber-dim:#F5E4C4;  /* ยังไม่เริ่ม */
-    --rust:#B84B2C;         --rust-dim:#F3DACB;   /* กำลังดำเนินอยู่ */
+    --calm:#2E6BA6;         --calm-dim:#DCE7F2;   /* ยังไม่เริ่ม — ปกติ ไม่มีอะไรเร่งด่วน */
+    --amber:#C8801E;        --amber-dim:#F5E4C4;  /* ยังไม่เริ่ม — ใกล้เต็ม/ใกล้เวลาเริ่ม (กระพริบเหลือง) */
+    --rust:#B84B2C;         --rust-dim:#F3DACB;   /* สำรอง (ไม่ได้ใช้กับสถานะรอบแล้ว) */
     --slate:#6B7482;        --slate-dim:#E6E5DC;  /* สิ้นสุดแล้ว */
-    --good:#2F7D5A;         --good-dim:#DCEEE2;   /* ที่นั่งว่าง */
-    --danger:#B23A3A;       --danger-dim:#F4DEDA; /* เต็ม/ยกเลิก */
+    --good:#2F7D5A;         --good-dim:#DCEEE2;   /* กำลังดำเนินอยู่ + ที่นั่งว่าง (กระพริบเขียว) */
+    --danger:#B23A3A;       --danger-dim:#F4DEDA; /* ยังไม่เริ่มแต่เต็มแล้ว + ยกเลิก (กระพริบแดง) */
 
     --radius-lg:22px;
     --radius-md:14px;
@@ -174,10 +174,26 @@
   .summary-item b{ font-family:'IBM Plex Mono',monospace; font-size:1rem; color:var(--ink); display:block; }
 
   /* ---------- board rows ---------- */
+  /* ตัวแปร --accent ต่อแถวใช้เป็นสีขอบซ้าย + สีวงแหวนตอนกระพริบ (row-pulse) โดยไม่แตะสีตัวอักษรของแถว
+     ป้ายสถานะ (.status-tag) แยกกำหนดสีของตัวเองตรงๆ (color:var(--x)) แล้วใช้ currentColor สำหรับจุด/แหวนกระพริบ (glow-pulse) */
   .slot-row{
-    display:flex; align-items:center; gap:1rem; padding:.95rem 1.05rem; border:1px solid var(--line);
+    --accent:transparent;
+    display:flex; align-items:center; gap:1rem; padding:.95rem 1.05rem;
+    border:1px solid var(--line); border-left:5px solid var(--accent);
     border-radius:var(--radius-md); background:#fff; margin-bottom:.65rem; flex-wrap:wrap;
+    transition:background-color .2s ease, border-color .2s ease;
   }
+  .slot-row.status-ended{ --accent:var(--slate); background:var(--slate-dim); opacity:.82; }
+  .slot-row.status-normal{ --accent:var(--calm); }
+  .slot-row.status-near{ --accent:var(--amber); background:var(--amber-dim); }
+  .slot-row.status-full{ --accent:var(--danger); background:var(--danger-dim); }
+  .slot-row.status-live{ --accent:var(--good); background:var(--good-dim); }
+  .slot-row.status-live, .slot-row.status-near, .slot-row.status-full{ animation:row-pulse 1.8s ease-in-out infinite; }
+  @keyframes row-pulse{
+    0%,100%{ box-shadow:0 0 0 0 rgba(0,0,0,0); }
+    50%{ box-shadow:0 0 0 4px rgba(0,0,0,.1); box-shadow:0 0 0 4px color-mix(in srgb, var(--accent) 32%, transparent); }
+  }
+
   .slot-time{
     font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:1.05rem; flex:0 0 auto;
     background:var(--ink); color:var(--bg); border-radius:var(--radius-sm); padding:.4rem .7rem; min-width:118px; text-align:center;
@@ -188,17 +204,58 @@
 
   .status-tag{ display:inline-flex; align-items:center; gap:.4rem; font-weight:800; font-size:.72rem; padding:.32rem .7rem; border-radius:999px; flex:0 0 auto; }
   .status-tag .dot{ width:7px; height:7px; border-radius:50%; background:currentColor; }
-  .tag-upcoming{ background:var(--amber-dim); color:var(--amber); }
-  .tag-live{ background:var(--rust-dim); color:var(--rust); }
-  .tag-live .dot{ animation:pulse-dot 1.4s ease-in-out infinite; }
-  @keyframes pulse-dot{ 0%,100%{ opacity:1; transform:scale(1);} 50%{ opacity:.35; transform:scale(.7);} }
   .tag-ended{ background:var(--slate-dim); color:var(--slate); }
+  .tag-normal{ background:var(--calm-dim); color:var(--calm); }
+  .tag-near{ background:var(--amber-dim); color:var(--amber); }
+  .tag-full{ background:var(--danger-dim); color:var(--danger); }
+  .tag-live{ background:var(--good-dim); color:var(--good); }
+  .tag-live .dot, .tag-near .dot, .tag-full .dot{ animation:pulse-dot 1.4s ease-in-out infinite; }
+  .tag-live, .tag-near, .tag-full{ animation:glow-pulse 1.8s ease-in-out infinite; }
+  @keyframes pulse-dot{ 0%,100%{ opacity:1; transform:scale(1);} 50%{ opacity:.35; transform:scale(.7);} }
+  @keyframes glow-pulse{
+    0%,100%{ box-shadow:0 0 0 0 rgba(0,0,0,0); }
+    50%{ box-shadow:0 0 0 4px rgba(0,0,0,.12); box-shadow:0 0 0 4px color-mix(in srgb, currentColor 30%, transparent); }
+  }
+
+  .seat-btn{
+    flex:0 0 auto; border:1.5px solid var(--line-strong); background:#fff; color:var(--ink);
+    font-weight:700; font-size:.76rem; padding:.45rem .8rem; border-radius:var(--radius-sm);
+    transition:border-color .12s ease, transform .12s ease;
+  }
+  .seat-btn:hover{ border-color:var(--pine); transform:translateY(-1px); }
 
   .seat-gauge{ flex:0 0 148px; }
   .seat-nums{ display:flex; justify-content:space-between; font-family:'IBM Plex Mono',monospace; font-size:.72rem; font-weight:700; margin-bottom:.3rem; }
   .seat-bar{ height:7px; background:var(--bg-soft); border-radius:999px; overflow:hidden; }
   .seat-bar > span{ display:block; height:100%; background:var(--good); border-radius:999px; transition:width .2s ease; }
   .seat-bar.full > span{ background:var(--danger); }
+
+  /* ---------- ผังที่นั่ง (modal) ---------- */
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(27,42,32,.5); display:flex; align-items:center; justify-content:center;
+    padding:1.2rem; z-index:100;
+  }
+  .modal-panel{
+    background:var(--panel); border-radius:var(--radius-lg); box-shadow:var(--shadow-md); border:1px solid var(--line);
+    padding:1.6rem; max-width:560px; width:100%; max-height:85vh; overflow-y:auto; position:relative;
+  }
+  .modal-close{
+    position:absolute; top:1rem; right:1rem; width:32px; height:32px; border-radius:50%; border:1.5px solid var(--line-strong);
+    background:#fff; font-size:1.1rem; line-height:1; color:var(--ink-soft); display:flex; align-items:center; justify-content:center;
+  }
+  .modal-close:hover{ border-color:var(--pine); color:var(--pine); }
+  .seat-legend{ display:flex; gap:1.1rem; flex-wrap:wrap; margin:.9rem 0 1.2rem; font-size:.78rem; color:var(--ink-soft); }
+  .seat-legend .sw{ display:inline-block; width:12px; height:12px; border-radius:4px; margin-right:.4rem; vertical-align:-2px; }
+  .sw-avail{ background:#fff; border:1.5px solid var(--line-strong); }
+  .sw-booked{ background:var(--amber-dim); border:1.5px solid var(--amber); }
+  .sw-checkedin{ background:var(--good-dim); border:1.5px solid var(--good); }
+  .seat-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(46px,1fr)); gap:.5rem; }
+  .seat-cell{
+    aspect-ratio:1; display:flex; align-items:center; justify-content:center; border-radius:var(--radius-sm);
+    font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:.8rem; border:1.5px solid var(--line-strong); background:#fff; color:var(--ink);
+  }
+  .seat-cell.seat-booked{ background:var(--amber-dim); border-color:var(--amber); color:var(--amber); }
+  .seat-cell.seat-checkedin{ background:var(--good-dim); border-color:var(--good); color:var(--good); }
 
   footer{ text-align:center; color:var(--ink-soft); font-size:.76rem; padding:1.5rem 0 2.5rem; }
 
@@ -266,8 +323,10 @@
 
     <div class="chip-row" id="status-chips" style="margin-bottom:1.1rem;">
       <button class="chip active" data-status="all">ทั้งหมด</button>
-      <button class="chip" data-status="upcoming">ยังไม่เริ่ม</button>
       <button class="chip" data-status="live">กำลังดำเนินอยู่</button>
+      <button class="chip" data-status="near">ใกล้เต็ม/ใกล้เริ่ม</button>
+      <button class="chip" data-status="full">เต็มแล้ว (ยังไม่เริ่ม)</button>
+      <button class="chip" data-status="normal">ยังไม่เริ่ม</button>
       <button class="chip" data-status="ended">สิ้นสุดแล้ว</button>
     </div>
 
@@ -279,6 +338,22 @@
   <footer>
     หน้านี้แสดงเฉพาะข้อมูลสาธารณะ (สถานะรอบ / จำนวนที่นั่งว่าง) และผลค้นหาการจองของคุณเองเท่านั้น
   </footer>
+</div>
+
+<!-- ================= ผังที่นั่ง (เปิดจากปุ่ม "ดูผังที่นั่ง" ในแต่ละรอบ) ================= -->
+<div class="modal-overlay hidden" id="seat-modal-overlay">
+  <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="seat-modal-title" tabindex="-1" id="seat-modal-panel">
+    <button class="modal-close" id="seat-modal-close" aria-label="ปิดผังที่นั่ง">×</button>
+    <p class="eyebrow" id="seat-modal-eyebrow" style="margin-bottom:.3rem;"></p>
+    <h2 id="seat-modal-title" style="margin-bottom:.15rem;"></h2>
+    <p class="panel-sub" id="seat-modal-sub"></p>
+    <div class="seat-legend">
+      <span><i class="sw sw-avail"></i>ว่าง</span>
+      <span><i class="sw sw-booked"></i>จองแล้ว รอเช็คอิน</span>
+      <span><i class="sw sw-checkedin"></i>เช็คอินแล้ว</span>
+    </div>
+    <div class="seat-grid" id="seat-grid"></div>
+  </div>
 </div>
 
 <script>
@@ -293,9 +368,15 @@
   const AUTO_REFRESH_MS = 20000;
   const isConfigured = GAS_WEB_APP_URL && !GAS_WEB_APP_URL.includes('PASTE_YOUR');
 
+  // เกณฑ์การขึ้นสถานะ "ใกล้เต็ม / ใกล้เวลาเริ่ม" (ปรับได้ตามความเหมาะสมของงาน)
+  const NEAR_START_MINUTES = 15;   // เหลือเวลาก่อนเริ่มไม่เกินกี่นาที ถือว่า "ใกล้เริ่ม"
+  const NEAR_FULL_SEATS = 3;       // ที่นั่งว่างเหลือไม่เกินกี่ที่ ถือว่า "ใกล้เต็ม"
+  const NEAR_FULL_RATIO = 0.15;    // หรือที่นั่งว่างเหลือไม่เกินกี่% ของทั้งหมด (เลือกใช้ตัวที่เข้าเงื่อนไขก่อน)
+
   const state = {
     bases: [],
-    slots: [],       // { slotId, baseId, baseName, startTime, endTime, maxSeats, available, booked }
+    // slot: { slotId, baseId, baseName, startTime, endTime, maxSeats, available, booked, confirmedSeats, checkedInSeats }
+    slots: [],
     selectedBase: 'all',
     selectedStatus: 'all',
     refreshTimer: null
@@ -344,21 +425,34 @@
     return null;
   }
 
+  // สถานะที่เป็นไปได้: ended / live / full (ยังไม่เริ่มแต่เต็มแล้ว) / near (ยังไม่เริ่ม ใกล้เต็มหรือใกล้เวลา) / normal (ยังไม่เริ่ม ปกติ)
   function computeStatus(slot) {
     const start = parseSlotTime(slot.startTime);
     const end = parseSlotTime(slot.endTime);
     const now = new Date();
     if (!start || !end) return 'unknown';
-    if (now < start) return 'upcoming';
     if (now > end) return 'ended';
-    return 'live';
+    if (now >= start) return 'live';
+
+    // ยังไม่ถึงเวลาเริ่ม — ไล่ตรวจ "เต็มแล้ว" ก่อน เพราะสำคัญกว่า "ใกล้เต็ม"
+    if (slot.available <= 0) return 'full';
+
+    const minutesToStart = (start - now) / 60000;
+    const nearFull = slot.available <= NEAR_FULL_SEATS ||
+      (slot.maxSeats > 0 && (slot.available / slot.maxSeats) <= NEAR_FULL_RATIO);
+    const nearStart = minutesToStart <= NEAR_START_MINUTES;
+    if (nearFull || nearStart) return 'near';
+
+    return 'normal';
   }
 
   const STATUS_META = {
-    upcoming: { label: 'ยังไม่เริ่ม', cls: 'tag-upcoming' },
-    live:     { label: 'กำลังดำเนินอยู่', cls: 'tag-live' },
-    ended:    { label: 'สิ้นสุดแล้ว', cls: 'tag-ended' },
-    unknown:  { label: 'ไม่ทราบเวลา', cls: 'tag-ended' }
+    ended:   { label: 'สิ้นสุดแล้ว', cls: 'tag-ended' },
+    live:    { label: 'กำลังดำเนินอยู่', cls: 'tag-live' },
+    full:    { label: 'เต็มแล้ว (ยังไม่เริ่ม)', cls: 'tag-full' },
+    near:    { label: 'ใกล้เต็ม/ใกล้เริ่ม', cls: 'tag-near' },
+    normal:  { label: 'ยังไม่เริ่ม', cls: 'tag-normal' },
+    unknown: { label: 'ไม่ทราบเวลา', cls: 'tag-ended' }
   };
 
   const BOOKING_STATUS_META = {
@@ -389,8 +483,13 @@
       slots = slots.map((s, i) => {
         const r = seatLists[i];
         const maxSeats = (r && r.success) ? r.maxSeats : (s.maxSeats || 0);
-        const booked = (r && r.success) ? (r.bookedSeats || []).length : 0;
-        return Object.assign({}, s, { maxSeats: maxSeats, booked: booked, available: Math.max(0, maxSeats - booked) });
+        const confirmedSeats = (r && r.success) ? (r.confirmedSeats || []) : [];
+        const checkedInSeats = (r && r.success) ? (r.checkedInSeats || []) : [];
+        const booked = confirmedSeats.length + checkedInSeats.length;
+        return Object.assign({}, s, {
+          maxSeats: maxSeats, booked: booked, available: Math.max(0, maxSeats - booked),
+          confirmedSeats: confirmedSeats, checkedInSeats: checkedInSeats
+        });
       });
 
       state.slots = slots;
@@ -429,11 +528,13 @@
     const totalAvail = withStatus.reduce((sum, s) => sum + s.available, 0);
     const totalMax = withStatus.reduce((sum, s) => sum + s.maxSeats, 0);
     const liveCount = withStatus.filter(s => s.computedStatus === 'live').length;
-    const upcomingCount = withStatus.filter(s => s.computedStatus === 'upcoming').length;
+    const nearCount = withStatus.filter(s => s.computedStatus === 'near').length;
+    const fullCount = withStatus.filter(s => s.computedStatus === 'full').length;
     document.getElementById('summary-strip').innerHTML = `
       <div class="summary-item">ที่นั่งว่างรวม<b class="mono">${totalAvail} / ${totalMax}</b></div>
-      <div class="summary-item">รอบที่กำลังดำเนินอยู่<b class="mono">${liveCount}</b></div>
-      <div class="summary-item">รอบที่ยังไม่เริ่ม<b class="mono">${upcomingCount}</b></div>
+      <div class="summary-item">กำลังดำเนินอยู่<b class="mono">${liveCount}</b></div>
+      <div class="summary-item">ใกล้เต็ม/ใกล้เริ่ม<b class="mono">${nearCount}</b></div>
+      <div class="summary-item">เต็มแล้ว (ยังไม่เริ่ม)<b class="mono">${fullCount}</b></div>
     `;
 
     const box = document.getElementById('board-list');
@@ -447,7 +548,7 @@
       const pct = s.maxSeats > 0 ? Math.round((s.available / s.maxSeats) * 100) : 0;
       const full = s.available <= 0;
       return `
-        <div class="slot-row fade-in">
+        <div class="slot-row fade-in status-${s.computedStatus}">
           <div class="slot-time">${escapeHtml(s.startTime)}–${escapeHtml(s.endTime)}</div>
           <div class="slot-mid">
             <p class="slot-base">${escapeHtml(s.baseName)}</p>
@@ -458,10 +559,59 @@
             <div class="seat-nums"><span>ว่าง ${s.available}</span><span>เต็ม ${s.maxSeats}</span></div>
             <div class="seat-bar ${full ? 'full' : ''}"><span style="width:${pct}%"></span></div>
           </div>
+          <button class="seat-btn" type="button" data-slot-id="${escapeHtml(s.slotId)}">ดูผังที่นั่ง</button>
         </div>
       `;
     }).join('');
   }
+
+  // ---------- ผังที่นั่งของรอบเดียว (ใช้ข้อมูลที่โหลดไว้แล้ว ไม่ยิง API ซ้ำ) ----------
+  function openSeatMap(slotId) {
+    const slot = state.slots.find(s => s.slotId === slotId);
+    if (!slot) return;
+
+    document.getElementById('seat-modal-eyebrow').textContent = slot.baseName;
+    document.getElementById('seat-modal-title').textContent = `${slot.startTime} – ${slot.endTime}`;
+    document.getElementById('seat-modal-sub').textContent =
+      `ว่าง ${slot.available} จากทั้งหมด ${slot.maxSeats} ที่นั่ง`;
+
+    const confirmedSet = new Set((slot.confirmedSeats || []).map(String));
+    const checkedInSet = new Set((slot.checkedInSeats || []).map(String));
+    const cells = [];
+    for (let n = 1; n <= slot.maxSeats; n++) {
+      const key = String(n);
+      let cls = '';
+      if (checkedInSet.has(key)) cls = 'seat-checkedin';
+      else if (confirmedSet.has(key)) cls = 'seat-booked';
+      cells.push(`<div class="seat-cell ${cls}">${n}</div>`);
+    }
+    document.getElementById('seat-grid').innerHTML = cells.join('') ||
+      '<div class="empty-hint">ยังไม่มีข้อมูลที่นั่งของรอบนี้</div>';
+
+    const overlay = document.getElementById('seat-modal-overlay');
+    overlay.classList.remove('hidden');
+    document.getElementById('seat-modal-panel').focus();
+    state.lastFocusedEl = document.activeElement;
+  }
+
+  function closeSeatMap() {
+    document.getElementById('seat-modal-overlay').classList.add('hidden');
+    if (state.lastFocusedEl && document.contains(state.lastFocusedEl)) state.lastFocusedEl.focus();
+  }
+
+  document.getElementById('board-list').addEventListener('click', e => {
+    const btn = e.target.closest('.seat-btn');
+    if (!btn) return;
+    state.lastFocusedEl = btn;
+    openSeatMap(btn.dataset.slotId);
+  });
+  document.getElementById('seat-modal-close').addEventListener('click', closeSeatMap);
+  document.getElementById('seat-modal-overlay').addEventListener('click', e => {
+    if (e.target.id === 'seat-modal-overlay') closeSeatMap();
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !document.getElementById('seat-modal-overlay').classList.contains('hidden')) closeSeatMap();
+  });
 
   document.getElementById('status-chips').addEventListener('click', e => {
     const btn = e.target.closest('.chip');
@@ -482,6 +632,9 @@
     if (state.refreshTimer) clearInterval(state.refreshTimer);
     state.refreshTimer = null;
   }
+  // คำนวณสถานะ/สีใหม่จากข้อมูลที่มีอยู่แล้วทุก 15 วิ (ไม่ยิง API) เพื่อให้ "ใกล้เริ่ม" และการนับเวลาแม่นยำ
+  // แม้ผู้ใช้จะปิดสวิตช์รีเฟรชอัตโนมัติไว้ก็ตาม
+  setInterval(() => { if (state.slots.length) renderBoard(); }, 15000);
 
   // ---------- ค้นหาการจองของฉัน ----------
   document.getElementById('search-form').addEventListener('submit', async e => {
@@ -526,10 +679,7 @@
       }).join('');
 
       // สร้าง QR หลังแทรก DOM แล้ว (ต้องมี element อยู่จริงก่อนเรียก QRCode)
-      res.bookings.forEach((b, idx) => {
-        const qrId = 'qr-' + idx + '-' + Date.now();
-        // จับคู่ id ใหม่จาก DOM จริงแทน เพราะ Date.now() ด้านบนต่างกันคนละรอบ evaluation
-      });
+      // อิงลำดับ .qr-box ที่เพิ่งแทรกเข้าไป ซึ่งตรงกับลำดับ res.bookings เสมอ
       resultsBox.querySelectorAll('.qr-box').forEach((el, idx) => {
         try { new QRCode(el, { text: res.bookings[idx].bookingId, width: 74, height: 74, correctLevel: QRCode.CorrectLevel.M }); }
         catch (e) { /* ไม่บล็อกการแสดงผลถ้า QR ล้มเหลว */ }
