@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>เช็คการจองของฉัน</title>
-<link rel="icon" type="image/png" href="https://raw.githubusercontent.com/LogicsDevStudio/EBS-RTNMU/refs/heads/main/images/codeHive_Favicon.png">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -30,6 +29,7 @@
     --ink-soft:#5B6459;
 
     --pine:#1F3D2C;         --pine-dim:#DEE7DF;   /* หัวข้อ/ปุ่มหลัก */
+    --dormant:#7C6BA6;      --dormant-dim:#E9E4F1; /* ยังไม่เปิดให้จอง (ยังไม่ถึงเวลาเปิด) */
     --calm:#2E6BA6;         --calm-dim:#DCE7F2;   /* ยังไม่เริ่ม — ปกติ ไม่มีอะไรเร่งด่วน */
     --amber:#C8801E;        --amber-dim:#F5E4C4;  /* ยังไม่เริ่ม — ใกล้เต็ม/ใกล้เวลาเริ่ม (กระพริบเหลือง) */
     --rust:#B84B2C;         --rust-dim:#F3DACB;   /* สำรอง (ไม่ได้ใช้กับสถานะรอบแล้ว) */
@@ -190,6 +190,7 @@
     transition:background-color .2s ease, border-color .2s ease;
   }
   .slot-row.status-ended{ --accent:var(--slate); background:var(--slate-dim); opacity:.82; }
+  .slot-row.status-not_open{ --accent:var(--dormant); background:var(--dormant-dim); }
   .slot-row.status-normal{ --accent:var(--calm); }
   .slot-row.status-near{ --accent:var(--amber); background:var(--amber-dim); }
   .slot-row.status-full{ --accent:var(--danger); background:var(--danger-dim); }
@@ -211,6 +212,7 @@
   .status-tag{ display:inline-flex; align-items:center; gap:.4rem; font-weight:800; font-size:.72rem; padding:.32rem .7rem; border-radius:999px; flex:0 0 auto; }
   .status-tag .dot{ width:7px; height:7px; border-radius:50%; background:currentColor; }
   .tag-ended{ background:var(--slate-dim); color:var(--slate); }
+  .tag-dormant{ background:var(--dormant-dim); color:var(--dormant); }
   .tag-normal{ background:var(--calm-dim); color:var(--calm); }
   .tag-near{ background:var(--amber-dim); color:var(--amber); }
   .tag-full{ background:var(--danger-dim); color:var(--danger); }
@@ -235,6 +237,8 @@
   .seat-bar{ height:7px; background:var(--bg-soft); border-radius:999px; overflow:hidden; }
   .seat-bar > span{ display:block; height:100%; background:var(--good); border-radius:999px; transition:width .2s ease; }
   .seat-bar.full > span{ background:var(--danger); }
+  .not-open-note{ flex:0 0 148px; font-size:.76rem; color:var(--dormant); font-weight:600; }
+  .not-open-note .mono{ display:block; font-size:.9rem; margin-top:.1rem; }
 
   /* ---------- ผังที่นั่ง (modal) ---------- */
   .modal-overlay{
@@ -265,7 +269,7 @@
 
   /* ---------- ตั๋วแบบเต็มจอ (สไตล์ตั๋วภาพยนตร์) ---------- */
   .ft-overlay{
-    position:fixed; inset:0; background:radial-gradient(circle at 50% 0%, #eae4d2, #eae4d2 72%);
+    position:fixed; inset:0; background:radial-gradient(circle at 50% 0%, #274A36, var(--ink) 72%);
     display:flex; align-items:center; justify-content:center; padding:1.5rem; z-index:200; overflow-y:auto;
   }
   .ft-close{
@@ -377,6 +381,7 @@
       <button class="chip" data-status="near">ใกล้เต็ม/ใกล้เริ่ม</button>
       <button class="chip" data-status="full">เต็มแล้ว (ยังไม่เริ่ม)</button>
       <button class="chip" data-status="normal">ยังไม่เริ่ม</button>
+      <button class="chip" data-status="not_open">ยังไม่เปิดให้จอง</button>
       <button class="chip" data-status="ended">สิ้นสุดแล้ว</button>
     </div>
 
@@ -449,6 +454,8 @@
   const NEAR_START_MINUTES = 15;   // เหลือเวลาก่อนเริ่มไม่เกินกี่นาที ถือว่า "ใกล้เริ่ม"
   const NEAR_FULL_SEATS = 3;       // ที่นั่งว่างเหลือไม่เกินกี่ที่ ถือว่า "ใกล้เต็ม"
   const NEAR_FULL_RATIO = 0.15;    // หรือที่นั่งว่างเหลือไม่เกินกี่% ของทั้งหมด (เลือกใช้ตัวที่เข้าเงื่อนไขก่อน)
+  // รอบที่เริ่ม 13:00 จะเปิดให้จองตั้งแต่ 12:00 → เปิดก่อนเวลาเริ่ม 60 นาที (ปรับเลขนี้ได้ตามกติกาจริงของงาน)
+  const BOOKING_OPENS_MINUTES_BEFORE = 60;
 
   const state = {
     bases: [],
@@ -504,7 +511,7 @@
     return null;
   }
 
-  // สถานะที่เป็นไปได้: ended / live / full (ยังไม่เริ่มแต่เต็มแล้ว) / near (ยังไม่เริ่ม ใกล้เต็มหรือใกล้เวลา) / normal (ยังไม่เริ่ม ปกติ)
+  // สถานะที่เป็นไปได้: ended / live / not_open (ยังไม่ถึงเวลาเปิดให้จอง) / full (เปิดจองแล้วแต่เต็ม) / near (ใกล้เต็มหรือใกล้เวลา) / normal (ปกติ)
   function computeStatus(slot) {
     const start = parseSlotTime(slot.startTime);
     const end = parseSlotTime(slot.endTime);
@@ -513,7 +520,11 @@
     if (now > end) return 'ended';
     if (now >= start) return 'live';
 
-    // ยังไม่ถึงเวลาเริ่ม — ไล่ตรวจ "เต็มแล้ว" ก่อน เพราะสำคัญกว่า "ใกล้เต็ม"
+    // ยังไม่ถึงเวลาเริ่ม — ตรวจก่อนว่าถึงเวลาที่ "เปิดให้จอง" แล้วหรือยัง (เช่น รอบ 13:00 เปิดจอง 12:00)
+    const openTime = new Date(start.getTime() - BOOKING_OPENS_MINUTES_BEFORE * 60000);
+    if (now < openTime) return 'not_open';
+
+    // เปิดให้จองแล้ว — ไล่ตรวจ "เต็มแล้ว" ก่อน เพราะสำคัญกว่า "ใกล้เต็ม"
     if (slot.available <= 0) return 'full';
 
     const minutesToStart = (start - now) / 60000;
@@ -526,12 +537,13 @@
   }
 
   const STATUS_META = {
-    ended:   { label: 'สิ้นสุดแล้ว', cls: 'tag-ended' },
-    live:    { label: 'กำลังดำเนินอยู่', cls: 'tag-live' },
-    full:    { label: 'เต็มแล้ว (ยังไม่เริ่ม)', cls: 'tag-full' },
-    near:    { label: 'ใกล้เต็ม/ใกล้เริ่ม', cls: 'tag-near' },
-    normal:  { label: 'ยังไม่เริ่ม', cls: 'tag-normal' },
-    unknown: { label: 'ไม่ทราบเวลา', cls: 'tag-ended' }
+    ended:    { label: 'สิ้นสุดแล้ว', cls: 'tag-ended' },
+    live:     { label: 'กำลังดำเนินอยู่', cls: 'tag-live' },
+    not_open: { label: 'ยังไม่เปิดให้จอง', cls: 'tag-dormant' },
+    full:     { label: 'เต็มแล้ว (ยังไม่เริ่ม)', cls: 'tag-full' },
+    near:     { label: 'ใกล้เต็ม/ใกล้เริ่ม', cls: 'tag-near' },
+    normal:   { label: 'ยังไม่เริ่ม', cls: 'tag-normal' },
+    unknown:  { label: 'ไม่ทราบเวลา', cls: 'tag-ended' }
   };
 
   const BOOKING_STATUS_META = {
@@ -603,17 +615,20 @@
       return ta - tb;
     });
 
-    // แถบสรุปด้านบน
-    const totalAvail = withStatus.reduce((sum, s) => sum + s.available, 0);
-    const totalMax = withStatus.reduce((sum, s) => sum + s.maxSeats, 0);
+    // แถบสรุปด้านบน (ไม่รวมรอบที่ยังไม่เปิดให้จอง เพราะยังไม่ควรเห็นจำนวนที่นั่งของรอบนั้น)
+    const visibleForCount = withStatus.filter(s => s.computedStatus !== 'not_open');
+    const totalAvail = visibleForCount.reduce((sum, s) => sum + s.available, 0);
+    const totalMax = visibleForCount.reduce((sum, s) => sum + s.maxSeats, 0);
     const liveCount = withStatus.filter(s => s.computedStatus === 'live').length;
     const nearCount = withStatus.filter(s => s.computedStatus === 'near').length;
     const fullCount = withStatus.filter(s => s.computedStatus === 'full').length;
+    const notOpenCount = withStatus.filter(s => s.computedStatus === 'not_open').length;
     document.getElementById('summary-strip').innerHTML = `
       <div class="summary-item">ที่นั่งว่างรวม<b class="mono">${totalAvail} / ${totalMax}</b></div>
       <div class="summary-item">กำลังดำเนินอยู่<b class="mono">${liveCount}</b></div>
       <div class="summary-item">ใกล้เต็ม/ใกล้เริ่ม<b class="mono">${nearCount}</b></div>
       <div class="summary-item">เต็มแล้ว (ยังไม่เริ่ม)<b class="mono">${fullCount}</b></div>
+      <div class="summary-item">ยังไม่เปิดให้จอง<b class="mono">${notOpenCount}</b></div>
     `;
 
     const box = document.getElementById('board-list');
@@ -626,6 +641,24 @@
       const meta = STATUS_META[s.computedStatus];
       const pct = s.maxSeats > 0 ? Math.round((s.available / s.maxSeats) * 100) : 0;
       const full = s.available <= 0;
+
+      // ก่อนถึงเวลาเปิดให้จอง ยังไม่แสดงจำนวนที่นั่ง/ปุ่มดูผังที่นั่ง — บอกแค่ว่าจะเปิดให้จองเวลาใด
+      let rightSection;
+      if (s.computedStatus === 'not_open') {
+        const start = parseSlotTime(s.startTime);
+        const openTime = start ? new Date(start.getTime() - BOOKING_OPENS_MINUTES_BEFORE * 60000) : null;
+        const openTimeStr = openTime ? openTime.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '–';
+        rightSection = `<div class="not-open-note">เปิดให้จองเวลา<span class="mono">${openTimeStr} น.</span></div>`;
+      } else {
+        rightSection = `
+          <div class="seat-gauge">
+            <div class="seat-nums"><span>ว่าง ${s.available}</span><span>เต็ม ${s.maxSeats}</span></div>
+            <div class="seat-bar ${full ? 'full' : ''}"><span style="width:${pct}%"></span></div>
+          </div>
+          <button class="seat-btn" type="button" data-slot-id="${escapeHtml(s.slotId)}">ดูผังที่นั่ง</button>
+        `;
+      }
+
       return `
         <div class="slot-row fade-in status-${s.computedStatus}">
           <div class="slot-time">${escapeHtml(s.startTime)}–${escapeHtml(s.endTime)}</div>
@@ -634,11 +667,7 @@
             <p class="slot-loc">${escapeHtml(s.location || '')}</p>
           </div>
           <span class="status-tag ${meta.cls}"><span class="dot"></span>${meta.label}</span>
-          <div class="seat-gauge">
-            <div class="seat-nums"><span>ว่าง ${s.available}</span><span>เต็ม ${s.maxSeats}</span></div>
-            <div class="seat-bar ${full ? 'full' : ''}"><span style="width:${pct}%"></span></div>
-          </div>
-          <button class="seat-btn" type="button" data-slot-id="${escapeHtml(s.slotId)}">ดูผังที่นั่ง</button>
+          ${rightSection}
         </div>
       `;
     }).join('');
