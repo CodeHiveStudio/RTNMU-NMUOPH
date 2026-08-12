@@ -373,6 +373,9 @@
       </label>
     </div>
 
+    <p class="eyebrow" style="margin:0 0 .4rem;">วันที่</p>
+    <div class="base-tabs" id="date-tabs"></div>
+    <p class="eyebrow" style="margin:0 0 .4rem;">ฐานกิจกรรม</p>
     <div class="base-tabs" id="base-tabs"></div>
 
     <div class="chip-row" id="status-chips" style="margin-bottom:1.1rem;">
@@ -423,6 +426,7 @@
     <div class="ft-perf"><span class="ft-notch-l"></span><span class="ft-notch-r"></span></div>
     <div class="ft-body">
       <div class="ft-grid">
+        <div class="ft-field"><span class="lbl">วันที่</span><span class="val" id="ft-date"></span></div>
         <div class="ft-field"><span class="lbl">รอบเวลา</span><span class="val" id="ft-time"></span></div>
         <div class="ft-field"><span class="lbl">สถานะ</span><span class="val" id="ft-status"></span></div>
         <div class="ft-field ft-seat">
@@ -459,8 +463,10 @@
 
   const state = {
     bases: [],
-    // slot: { slotId, baseId, baseName, startTime, endTime, maxSeats, available, booked, confirmedSeats, checkedInSeats }
+    // slot: { slotId, baseId, baseName, startTime, endTime, maxSeats, available, booked, confirmedSeats, checkedInSeats, date }
     slots: [],
+    dates: [],           // วันที่ทั้งหมดที่มีรอบอยู่จริง เรียงจากเก่าไปใหม่ (คำนวณจาก state.slots ทุกครั้งที่โหลดใหม่)
+    selectedDate: 'all',
     selectedBase: 'all',
     selectedStatus: 'all',
     refreshTimer: null,
@@ -492,11 +498,10 @@
   setInterval(tickClock, 1000);
   tickClock();
 
-  // ---------- แปลงเวลารอบ (HH:mm[:ss] หรือ timestamp เต็ม) ให้เป็น Date เทียบกับวันนี้ ----------
-  // หมายเหตุ: สมมติว่าแต่ละรอบอยู่ภายในวันเดียวกัน (event 1 วัน) โดยอ่านเฉพาะส่วนเวลา
-  // ถ้ากิจกรรมของคุณมีหลายวันและคอลัมน์ startTime/endTime เก็บวันที่เต็มด้วย ให้ปรับฟังก์ชันนี้
-  // ให้ parse วันที่จากค่าที่ได้จริงแทนการอิง "วันนี้" เสมอ
-  function parseSlotTime(raw) {
+  // ---------- แปลงเวลารอบ (HH:mm[:ss] หรือ timestamp เต็ม) ให้เป็น Date object ----------
+  // dateRaw (ไม่บังคับ) = ค่าจากคอลัมน์ Slots.date เช่น '2026-08-13' — ถ้ามีจะใช้วันที่นี้แทน "วันนี้"
+  // ทำให้รองรับฐานที่จัดหลายวันได้ถูกต้อง ถ้าไม่มี (รอบเก่าที่สร้างไว้ก่อนมีคอลัมน์วันที่) จะ fallback ไปใช้วันนี้เหมือนเดิม
+  function parseSlotTime(raw, dateRaw) {
     if (!raw) return null;
     const s = String(raw).trim();
     const full = s.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?/);
@@ -505,16 +510,17 @@
     }
     const timeOnly = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
     if (timeOnly) {
-      const now = new Date();
-      return new Date(now.getFullYear(), now.getMonth(), now.getDate(), +timeOnly[1], +timeOnly[2], +(timeOnly[3]||0));
+      const dm = dateRaw ? String(dateRaw).match(/^(\d{4})-(\d{2})-(\d{2})/) : null;
+      const base = dm ? new Date(+dm[1], +dm[2]-1, +dm[3]) : new Date();
+      return new Date(base.getFullYear(), base.getMonth(), base.getDate(), +timeOnly[1], +timeOnly[2], +(timeOnly[3]||0));
     }
     return null;
   }
 
   // สถานะที่เป็นไปได้: ended / live / not_open (ยังไม่ถึงเวลาเปิดให้จอง) / full (เปิดจองแล้วแต่เต็ม) / near (ใกล้เต็มหรือใกล้เวลา) / normal (ปกติ)
   function computeStatus(slot) {
-    const start = parseSlotTime(slot.startTime);
-    const end = parseSlotTime(slot.endTime);
+    const start = parseSlotTime(slot.startTime, slot.date);
+    const end = parseSlotTime(slot.endTime, slot.date);
     const now = new Date();
     if (!start || !end) return 'unknown';
     if (now > end) return 'ended';
@@ -584,12 +590,64 @@
       });
 
       state.slots = slots;
+      computeAvailableDates_();
       document.getElementById('last-updated').textContent = new Date().toLocaleTimeString('th-TH', { hour12:false });
+      renderDateTabs();
       renderBoard();
     } catch (err) {
       document.getElementById('board-list').innerHTML =
         `<div class="empty-hint">โหลดข้อมูลรอบเวลาไม่สำเร็จ: ${escapeHtml(err.message)}<br>กรุณาตรวจสอบการเชื่อมต่อ แล้วลองรีเฟรชอีกครั้ง</div>`;
     }
+  }
+
+  // แปลง 'yyyy-MM-dd' เป็นวันที่แบบไทยอ่านง่าย (เช่น 12 ส.ค. 2569) — คืนค่าดิบถ้ารูปแบบไม่ตรงตามที่คาด
+  function formatThaiDate(dateStr) {
+    if (!dateStr) return 'ไม่ระบุวันที่';
+    const m = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return dateStr;
+    const d = new Date(+m[1], +m[2] - 1, +m[3]);
+    return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric', weekday: 'short' });
+  }
+  function todayDateStr_() {
+    const d = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
+
+  // หาวันที่ทั้งหมดที่มีรอบอยู่จริงจาก state.slots แล้วเลือกวันที่เริ่มต้นให้อัตโนมัติ:
+  // วันนี้ถ้ามีรอบ, ไม่งั้นเอาวันถัดไปที่ใกล้ที่สุด, ไม่งั้นเอาวันแรกสุดที่มีข้อมูล (เช่น งานผ่านไปแล้วทั้งหมด)
+  // ทำงานเฉพาะตอนที่ยังไม่เคยเลือกวันที่มาก่อน (selectedDate ยังเป็นค่าเริ่มต้น 'all') เพื่อไม่ไปแทนที่
+  // ตัวกรองที่ผู้ใช้เลือกไว้เองตอนรีเฟรชข้อมูลรอบถัดไป
+  function computeAvailableDates_() {
+    const dateSet = new Set(state.slots.map(s => s.date || ''));
+    const dates = Array.from(dateSet).sort((a, b) => {
+      if (!a) return 1;
+      if (!b) return -1;
+      return a < b ? -1 : (a > b ? 1 : 0);
+    });
+    state.dates = dates;
+
+    if (state.selectedDate === 'all' && dates.length) {
+      const today = todayDateStr_();
+      let def = dates.find(d => d === today);
+      if (!def) def = dates.find(d => d && d > today);
+      if (!def) def = dates[0];
+      state.selectedDate = def;
+    }
+  }
+
+  function renderDateTabs() {
+    const wrap = document.getElementById('date-tabs');
+    if (state.dates.length <= 1) { wrap.innerHTML = ''; return; } // วันเดียวไม่ต้องมีตัวกรองให้รก
+    const tabs = [{ value: 'all', label: 'ทุกวัน' }].concat(
+      state.dates.map(d => ({ value: d, label: formatThaiDate(d) }))
+    );
+    wrap.innerHTML = tabs.map(t =>
+      `<button class="base-tab ${state.selectedDate === t.value ? 'active' : ''}" data-date="${escapeHtml(t.value)}">${escapeHtml(t.label)}</button>`
+    ).join('');
+    wrap.querySelectorAll('.base-tab').forEach(btn => {
+      btn.addEventListener('click', () => { state.selectedDate = btn.dataset.date; renderDateTabs(); renderBoard(); });
+    });
   }
 
   function renderBaseTabs() {
@@ -605,12 +663,13 @@
 
   function renderBoard() {
     let list = state.slots.slice();
+    if (state.selectedDate !== 'all') list = list.filter(s => (s.date || '') === state.selectedDate);
     if (state.selectedBase !== 'all') list = list.filter(s => s.baseId === state.selectedBase);
 
     const withStatus = list.map(s => Object.assign({}, s, { computedStatus: computeStatus(s) }));
     const filtered = state.selectedStatus === 'all' ? withStatus : withStatus.filter(s => s.computedStatus === state.selectedStatus);
     filtered.sort((a, b) => {
-      const ta = parseSlotTime(a.startTime), tb = parseSlotTime(b.startTime);
+      const ta = parseSlotTime(a.startTime, a.date), tb = parseSlotTime(b.startTime, b.date);
       if (!ta || !tb) return 0;
       return ta - tb;
     });
@@ -645,7 +704,7 @@
       // ก่อนถึงเวลาเปิดให้จอง ยังไม่แสดงจำนวนที่นั่ง/ปุ่มดูผังที่นั่ง — บอกแค่ว่าจะเปิดให้จองเวลาใด
       let rightSection;
       if (s.computedStatus === 'not_open') {
-        const start = parseSlotTime(s.startTime);
+        const start = parseSlotTime(s.startTime, s.date);
         const openTime = start ? new Date(start.getTime() - BOOKING_OPENS_MINUTES_BEFORE * 60000) : null;
         const openTimeStr = openTime ? openTime.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '–';
         rightSection = `<div class="not-open-note">เปิดให้จองเวลา<span class="mono">${openTimeStr} น.</span></div>`;
@@ -664,7 +723,7 @@
           <div class="slot-time">${escapeHtml(s.startTime)}–${escapeHtml(s.endTime)}</div>
           <div class="slot-mid">
             <p class="slot-base">${escapeHtml(s.baseName)}</p>
-            <p class="slot-loc">${escapeHtml(s.location || '')}</p>
+            <p class="slot-loc">${state.selectedDate === 'all' ? escapeHtml(formatThaiDate(s.date)) + (s.location ? ' · ' + escapeHtml(s.location) : '') : escapeHtml(s.location || '')}</p>
           </div>
           <span class="status-tag ${meta.cls}"><span class="dot"></span>${meta.label}</span>
           ${rightSection}
@@ -679,7 +738,7 @@
     if (!slot) return;
 
     document.getElementById('seat-modal-eyebrow').textContent = slot.baseName;
-    document.getElementById('seat-modal-title').textContent = `${slot.startTime} – ${slot.endTime}`;
+    document.getElementById('seat-modal-title').textContent = `${formatThaiDate(slot.date)} · ${slot.startTime} – ${slot.endTime}`;
     document.getElementById('seat-modal-sub').textContent =
       `ว่าง ${slot.available} จากทั้งหมด ${slot.maxSeats} ที่นั่ง`;
 
@@ -773,6 +832,7 @@
               <p class="ticket-id mono">${escapeHtml(b.bookingId)}</p>
               <div class="ticket-grid">
                 <div class="ticket-field"><span class="lbl">ฐานกิจกรรม</span><span class="val">${escapeHtml(b.baseName)}</span></div>
+                <div class="ticket-field"><span class="lbl">วันที่</span><span class="val">${escapeHtml(formatThaiDate(b.slotDate))}</span></div>
                 <div class="ticket-field"><span class="lbl">รอบเวลา</span><span class="val">${escapeHtml(b.slotTime)}</span></div>
                 <div class="ticket-field"><span class="lbl">ที่นั่ง</span><span class="val">${escapeHtml(b.seatNo)}</span></div>
                 <div class="ticket-field"><span class="lbl">สถานะ</span><span class="status-pill ${bmeta.cls}"><span class="dot"></span>${bmeta.label}</span></div>
@@ -807,6 +867,7 @@
     document.getElementById('ft-base').textContent = booking.baseName || '';
     document.getElementById('ft-name').textContent = booking.fullName || '';
     document.getElementById('ft-id').textContent = booking.bookingId || '';
+    document.getElementById('ft-date').textContent = formatThaiDate(booking.slotDate);
     document.getElementById('ft-time').textContent = booking.slotTime || '';
     document.getElementById('ft-status').textContent = bmeta.label;
     document.getElementById('ft-seat').textContent = booking.seatNo != null ? booking.seatNo : '–';
